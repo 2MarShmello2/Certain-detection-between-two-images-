@@ -1,0 +1,422 @@
+import random
+import numpy as np
+import tensorflow as tf
+import keras as kr
+from keras import layers
+import matplotlib.pyplot as plt
+from PIL import Image
+import os
+from keras.models import Model
+import torchvision.transforms as transforms
+
+
+epochs = 5
+batch_size = 15
+margin = 1  # Margin for contrastive loss.
+stop_train = 500
+stop_test = 500
+
+def make_pairs(folder_path,img_size=(255,255)):
+
+    pairs = []
+    pairs_val = []
+    label_val = []
+    t_pairs = []
+    t_labels = []
+    labels = []
+    num_pos_pairs = 0
+    num_neg_pairs = 0
+
+    # Define image transformations
+    transform = transforms.Compose([
+        transforms.Resize(img_size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        transforms.Lambda(lambda x: x.permute(1, 2, 0))
+    ])
+
+    # Get list of all subfolders in the specified folder
+    subfolders = sorted([os.path.join(folder_path, f) for f in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, f))])
+
+    num_subfolders = len(subfolders)
+    train_subfolders = subfolders[:num_subfolders // 3]
+    val_subfolders = subfolders[num_subfolders // 3: 2 * (num_subfolders // 3)]
+    test_subfolders = subfolders[2 * (num_subfolders // 3):]
+    # Iterate over all subfolders to create pairs
+
+    for i, folder in enumerate(train_subfolders):
+        # Load all images in the current folder
+        images = sorted([os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
+
+        # Iterate over all pairs of images in the current folder
+        for j in range(len(images)):
+            for k in range(j+1,len(images)):
+                # Add a positive pair (i.e., images from the same class)
+                pairs.append([np.array(transform(Image.open(images[j]))), np.array(transform(Image.open(images[k])))])
+                labels.append(0.0)
+                num_pos_pairs += 1
+
+                if num_pos_pairs >= stop_train:
+                    break
+
+                # Add a negative pair (i.e., images from different classes)
+                other_folder = random.choice([f for f in train_subfolders if f != folder])
+                other_images = sorted([os.path.join(other_folder, f) for f in os.listdir(other_folder) if
+                                       os.path.isfile(os.path.join(other_folder, f))])
+                other_image = np.array(transform(Image.open(random.choice(other_images))))
+
+                # Add a negative pair (i.e., images from different classes)
+                pairs.append([np.array(transform(Image.open(images[j]))), other_image])
+                labels.append(1.0)
+                num_neg_pairs += 1
+
+                if num_neg_pairs >= stop_train:
+                    break
+
+            if num_pos_pairs >= stop_train or num_neg_pairs >= stop_train:
+                break
+
+        if num_pos_pairs >= stop_train or num_neg_pairs >= stop_train:
+            break
+
+    num_pos_pairs = 0
+    num_neg_pairs = 0
+    for i, folder in enumerate(val_subfolders):
+        # Load all images in the current folder
+        images = sorted(
+            [os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
+
+        # Iterate over all pairs of images in the current folder
+        for j in range(len(images)):
+            for k in range(j + 1, len(images)):
+                # Add a positive pair (i.e., images from the same class)
+                pairs_val.append(
+                    [np.array(transform(Image.open(images[j]))), np.array(transform(Image.open(images[k])))])
+                label_val.append(0.0)
+                num_pos_pairs += 1
+
+                if num_pos_pairs >= stop_train:
+                    break
+
+                # Add a negative pair (i.e., images from different classes)
+                other_folder = random.choice([f for f in val_subfolders if f != folder])
+                other_images = sorted([os.path.join(other_folder, f) for f in os.listdir(other_folder) if
+                                       os.path.isfile(os.path.join(other_folder, f))])
+                other_image = np.array(transform(Image.open(random.choice(other_images))))
+
+                # Add a negative pair (i.e., images from different classes)
+                pairs_val.append([np.array(transform(Image.open(images[j]))), other_image])
+                label_val.append(1.0)
+                num_neg_pairs += 1
+
+                if num_neg_pairs >= stop_train:
+                    break
+
+            if num_pos_pairs >= stop_train or num_neg_pairs >= stop_train:
+                break
+
+        if num_pos_pairs >= stop_train or num_neg_pairs >= stop_train:
+            break
+
+
+
+        # Iterate over test subfolders to create pairs
+
+    # for pair in pairs:
+    #     # Get the two images from the pair
+    #     img1, img2 = pair[0], pair[1]
+    #
+    #
+    #     # Display the images side by side
+    #     fig, ax = plt.subplots(1, 2)
+    #     ax[0].imshow(img1)
+    #     ax[1].imshow(img2)
+    #     plt.show()
+
+    num_pos_pairs = 0
+    num_neg_pairs = 0
+    for i, folder in enumerate(test_subfolders):
+        # Load all images in the current folder
+        images = sorted(
+            [os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
+
+        # Iterate over all pairs of images in the current folder
+        for j in range(len(images)):
+            for k in range(j + 1, len(images)):
+                # Add a positive pair (i.e., images from the same class)
+                t_pairs.append([np.array(transform(Image.open(images[j]))), np.array(transform(Image.open(images[k])))])
+                t_labels.append(0.0)
+                num_pos_pairs += 1
+
+                if num_pos_pairs >= stop_test:
+                    break
+
+                # Add a negative pair (i.e., images from different classes)
+                other_folder = random.choice([f for f in test_subfolders if f != folder])
+                other_images = sorted([os.path.join(other_folder, f) for f in os.listdir(other_folder) if
+                                       os.path.isfile(os.path.join(other_folder, f))])
+                other_image = np.array(transform(Image.open(random.choice(other_images))))
+
+                # Add a negative pair (i.e., images from different classes)
+                t_pairs.append([np.array(transform(Image.open(images[j]))), other_image])
+                t_labels.append(1.0)
+                num_neg_pairs += 1
+
+                if num_neg_pairs >= stop_test:
+                    break
+
+            if num_pos_pairs >= stop_test or num_neg_pairs >= stop_test:
+                break
+
+        if num_pos_pairs >= stop_test or num_neg_pairs >= stop_test:
+            break
+
+
+
+
+    return np.array(pairs),np.array(labels),np.array(t_pairs),np.array(t_labels),np.array(pairs_val),np.array(label_val)
+
+
+def make_pairs_specific(folder_path,img_size=(255,255)):
+
+    pairs = []
+    pairs_val = []
+    label_val = []
+    t_pairs = []
+    t_labels = []
+    labels = []
+    num_pos_pairs = 0
+    num_neg_pairs = 0
+
+    # Define image transformations
+    transform = transforms.Compose([
+        transforms.Resize(img_size),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+        transforms.Lambda(lambda x: x.permute(1, 2, 0))
+    ])
+
+    # Get list of all subfolders in the specified folder
+    subfolders = sorted([os.path.join(folder_path, f) for f in os.listdir(folder_path) if os.path.isdir(os.path.join(folder_path, f))])
+
+    num_subfolders = len(subfolders)
+    train_subfolders = subfolders[:num_subfolders // 3]
+    val_subfolders = subfolders[num_subfolders // 3: 2 * (num_subfolders // 3)]
+    test_subfolders = subfolders[2 * (num_subfolders // 3):]
+    # Iterate over all subfolders to create pairs
+
+    for i, folder in enumerate(train_subfolders):
+        # Load all images in the current folder
+        images = sorted([os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
+
+        # Iterate over all pairs of images in the current folder
+        for j in range(18):
+            pairs.append([np.array(transform(Image.open(images[j]))), np.array(transform(Image.open(images[j+18])))])
+            labels.append(0.0)
+            num_pos_pairs += 1
+
+            other_folder = random.choice([f for f in train_subfolders if f != folder])
+            other_images = sorted([os.path.join(other_folder, f) for f in os.listdir(other_folder) if
+                                   os.path.isfile(os.path.join(other_folder, f))])
+            other_image = np.array(transform(Image.open(other_images[j+18])))
+
+            # Add a negative pair (i.e., images from different classes)
+            pairs.append([np.array(transform(Image.open(images[j]))), other_image])
+            labels.append(1.0)
+            num_neg_pairs += 1
+
+            if num_pos_pairs >= stop_train or num_neg_pairs >= stop_train:
+                break
+
+        if num_pos_pairs >= stop_train or num_neg_pairs >= stop_train:
+            break
+
+    num_pos_pairs = 0
+    num_neg_pairs = 0
+
+    for i, folder in enumerate(val_subfolders):
+        # Load all images in the current folder
+        images = sorted(
+            [os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
+
+        # Iterate over all pairs of images in the current folder
+        for j in range(18):
+            pairs_val.append([np.array(transform(Image.open(images[j]))), np.array(transform(Image.open(images[j + 18])))])
+            label_val.append(0.0)
+            num_pos_pairs += 1
+
+            other_folder = random.choice([f for f in val_subfolders if f != folder])
+            other_images = sorted([os.path.join(other_folder, f) for f in os.listdir(other_folder) if
+                                   os.path.isfile(os.path.join(other_folder, f))])
+            other_image = np.array(transform(Image.open(other_images[j+18])))
+
+            # Add a negative pair (i.e., images from different classes)
+            pairs_val.append([np.array(transform(Image.open(images[j]))), other_image])
+            label_val.append(1.0)
+            num_neg_pairs += 1
+
+            if num_pos_pairs >= stop_train or num_neg_pairs >= stop_train:
+                break
+
+        if num_pos_pairs >= stop_train or num_neg_pairs >= stop_train:
+            break
+
+
+
+
+        # Iterate over test subfolders to create pairs
+
+    # for pair in pairs:
+    #     # Get the two images from the pair
+    #     img1, img2 = pair[0], pair[1]
+    #
+    #
+    #     # Display the images side by side
+    #     fig, ax = plt.subplots(1, 2)
+    #     ax[0].imshow(img1)
+    #     ax[1].imshow(img2)
+    #     plt.show()
+
+    num_pos_pairs = 0
+    num_neg_pairs = 0
+
+    for i, folder in enumerate(test_subfolders):
+        # Load all images in the current folder
+        images = sorted(
+            [os.path.join(folder, f) for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
+
+        # Iterate over all pairs of images in the current folder
+        for j in range(18):
+            t_pairs.append([np.array(transform(Image.open(images[j]))), np.array(transform(Image.open(images[j + 18])))])
+            t_labels.append(0.0)
+            num_pos_pairs += 1
+
+            other_folder = random.choice([f for f in test_subfolders if f != folder])
+            other_images = sorted([os.path.join(other_folder, f) for f in os.listdir(other_folder) if
+                                   os.path.isfile(os.path.join(other_folder, f))])
+            other_image = np.array(transform(Image.open(other_images[j+18])))
+
+            # Add a negative pair (i.e., images from different classes)
+            t_pairs.append([np.array(transform(Image.open(images[j]))), other_image])
+            t_labels.append(1.0)
+            num_neg_pairs += 1
+            if num_pos_pairs >= stop_test or num_neg_pairs >= stop_test:
+                break
+
+        if num_pos_pairs >= stop_test or num_neg_pairs >= stop_test:
+            break
+
+
+    return np.array(pairs),np.array(labels),np.array(t_pairs),np.array(t_labels),np.array(pairs_val),np.array(label_val)
+
+
+def euclidean_distance(vects):
+    """Find the Euclidean distance between two vectors.
+
+    Arguments:
+        vects: List containing two tensors of same length.
+
+    Returns:
+        Tensor containing euclidean distance
+        (as floating point value) between vectors.
+    """
+
+    x, y = vects
+    sum_square = tf.math.reduce_sum(tf.math.square(x - y), axis=1, keepdims=True)
+    return tf.math.sqrt(tf.math.maximum(sum_square, tf.keras.backend.epsilon()))
+
+def loss(margin=1):
+    """Provides 'contrastive_loss' an enclosing scope with variable 'margin'.
+
+    Arguments:
+        margin: Integer, defines the baseline for distance for which pairs
+                should be classified as dissimilar. - (default is 1).
+
+    Returns:
+        'contrastive_loss' function with data ('margin') attached.
+    """
+
+    # Contrastive loss = mean( (1-true_value) * square(prediction) +
+    #                         true_value * square( max(margin-prediction, 0) ))
+    def contrastive_loss(y_true, y_pred):
+        """Calculates the contrastive loss.
+
+        Arguments:
+            y_true: List of labels, each label is of type float32.
+            y_pred: List of predictions of same length as of y_true,
+                    each label is of type float32.
+
+        Returns:
+            A tensor containing contrastive loss as floating point value.
+        """
+
+        square_pred = tf.math.square(y_pred)
+        margin_square = tf.math.square(tf.math.maximum(margin - (y_pred), 0))
+        return tf.math.reduce_mean(
+            (1 - y_true) * square_pred + (y_true) * margin_square
+        )
+
+    return contrastive_loss
+
+# def create_base_network(input_shape):
+#     input = layers.Input(input_shape)
+#     x = layers.Conv2D(16, (3, 3), activation="relu")(input)
+#     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+#     x = layers.Conv2D(32, (3, 3), activation="relu")(x)
+#     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+#     x = layers.Conv2D(64, (3, 3), activation="relu")(x)
+#     x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+#     x = layers.Flatten()(x)
+#     x = layers.Dense(128, activation="relu")(x)  # Add more layers here
+#     return kr.Model(input, x)
+
+# set path to directory containing images
+path = "C:\\Users\\xeaty\\Downloads\\\pictures_tza"
+path_2 = "C:\\Users\\xeaty\\Downloads\\\Pictures_Neural"
+
+pairs , labels ,test_pairs,test_labels,pair_val,label_val= make_pairs_specific(path_2)
+
+input = layers.Input((255, 255, 3))
+x = layers.Conv2D(16, (3, 3), activation="relu")(input)
+x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+x = layers.Conv2D(32, (3, 3), activation="relu")(x)
+x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+x = layers.Conv2D(64, (3, 3), activation="relu")(x)
+x = layers.MaxPooling2D(pool_size=(2, 2))(x)
+x = layers.Flatten()(x)
+x = layers.Dense(128, activation="relu")(x)  # Add more layers here
+
+embedding_network = kr.Model(input, x)
+
+
+input_1 = layers.Input((255, 255, 3))
+input_2 = layers.Input((255, 255, 3))
+
+
+tower_1 = embedding_network(input_1)
+tower_2 = embedding_network(input_2)
+
+merge_layer = layers.Lambda(euclidean_distance)([tower_1, tower_2])
+normal_layer = tf.keras.layers.BatchNormalization()(merge_layer)
+output_layer = layers.Dense(1, activation="sigmoid")(normal_layer)
+siamese = kr.Model(inputs=[input_1, input_2], outputs=output_layer)
+
+siamese.compile(loss=loss(margin=margin), optimizer="nadam", metrics=["accuracy"])
+siamese.summary()
+
+x_train_1 = pairs[:, 0]
+x_train_2 = pairs[:, 1]
+
+x_val_1 = pair_val[:, 0]
+x_val_2 = pair_val[:, 1]
+
+x_test_1 = test_pairs[:, 0]
+x_test_2 = test_pairs[:, 1]
+
+history = siamese.fit([x_train_1, x_train_2], labels,validation_data=([x_val_1, x_val_2], label_val), epochs=epochs, batch_size=batch_size)
+results = siamese.evaluate([x_test_1, x_test_2], test_labels)
+predictions = siamese.predict([x_test_1, x_test_2])
+print("test loss, test acc:", results)
+
+# set number of classes in the dataset
+num_classes = 80
